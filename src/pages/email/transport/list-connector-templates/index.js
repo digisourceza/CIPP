@@ -1,56 +1,44 @@
 import { Layout as DashboardLayout } from "/src/layouts/index.js";
 import { CippTablePage } from "/src/components/CippComponents/CippTablePage.jsx";
 import { EyeIcon, TrashIcon } from "@heroicons/react/24/outline";
+import ConnectorTemplateDetails from "../../../../components/CippComponents/ConnectorTemplateDetails";
 
 const Page = () => {
-  const pageTitle = "Connection filter Templates";
+  const pageTitle = "Exchange Connector Templates";
 
   const actions = [
     {
-      label: "View Template",
-      icon: <EyeIcon />, // Placeholder for the view icon
-      color: "success",
-      offCanvas: true,
-    },
-    {
       label: "Delete Template",
       type: "POST",
-      url: "/api/RemoveConnectionfilterTemplate",
-      data: { ID: "GUID" },
+      url: "/api/RemoveExConnectorTemplate",
+      data: {
+        ID: "GUID",
+      },
       confirmText: "Do you want to delete the template?",
-      icon: <TrashIcon />, // Placeholder for the delete icon
+      icon: <TrashIcon />,
       color: "danger",
     },
   ];
 
   const offCanvas = {
-    extendedInfoFields: [
-      "name",
-      "IsDefault",
-      "IPAllowList",
-      "IPBlockList",
-      "EnableSafeList",
-      "GUID",
-    ],
+    children: (data) => <ConnectorTemplateDetails data={data} />,
     actions: actions,
+    size: "lg",
   };
 
-  const simpleColumns = [
-    "name",
-    "IsDefault",
-    "IPAllowList",
-    "IPBlockList",
-    "EnableSafeList",
-    "GUID",
-  ];
+  const simpleColumns = ["name", "cippconnectortype", "GUID"];
 
   return (
     <CippTablePage
       title={pageTitle}
-      apiUrl="/api/ListConnectionfilterTemplates"
+      apiUrl="/api/ListExconnectorTemplates"
       actions={actions}
       offCanvas={offCanvas}
       simpleColumns={simpleColumns}
+      titleButton={{
+        label: "Add Template",
+        href: "/email/connectors/add-connector-templates",
+      }}
     />
   );
 };
