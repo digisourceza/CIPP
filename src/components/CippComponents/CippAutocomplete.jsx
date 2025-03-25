@@ -166,7 +166,12 @@ export const CippAutoComplete = (props) => {
             addedFields,
           };
         });
-        setUsedOptions(convertedOptions);
+
+        if (api?.dataFilter) {
+          setUsedOptions(api.dataFilter(convertedOptions));
+        } else {
+          setUsedOptions(convertedOptions);
+        }
       }
     }
 
@@ -199,9 +204,7 @@ export const CippAutoComplete = (props) => {
   // Dedicated effect for handling preselected value
   useEffect(() => {
     if (preselectedValue && !defaultValue && !value && memoizedOptions.length > 0) {
-      const preselectedOption = memoizedOptions.find(
-        (option) => option.value === preselectedValue
-      );
+      const preselectedOption = memoizedOptions.find((option) => option.value === preselectedValue);
 
       if (preselectedOption) {
         const newValue = multiple ? [preselectedOption] : preselectedOption;
@@ -219,10 +222,18 @@ export const CippAutoComplete = (props) => {
       JSON.stringify(defaultValue),
       JSON.stringify(preselectedValue),
       api?.url,
-      currentTenant
+      currentTenant,
     ];
-    return keyParts.join('-');
+    return keyParts.join("-");
   }, [defaultValue, preselectedValue, api?.url, currentTenant]);
+
+  const lookupOptionByValue = useCallback(
+    (value) => {
+      const foundOption = memoizedOptions.find((option) => option.value === value);
+      return foundOption || { label: value, value: value };
+    },
+    [memoizedOptions]
+  );
 
   return (
     <Autocomplete
@@ -250,19 +261,28 @@ export const CippAutoComplete = (props) => {
             (option) => params.inputValue === option.value || params.inputValue === option.label
           );
         if (params.inputValue !== "" && creatable && !isExisting) {
-          filtered.push({
+          const newOption = {
             label: `Add option: "${params.inputValue}"`,
             value: params.inputValue,
             manual: true,
-          });
+          };
+          if (!filtered.some((option) => option.value === newOption.value)) {
+            filtered.push(newOption);
+          }
         }
 
         return filtered;
       }}
       size="small"
       defaultValue={
-        typeof defaultValue === "string"
-          ? { label: defaultValue, value: defaultValue }
+        Array.isArray(defaultValue)
+          ? defaultValue.map((item) =>
+              typeof item === "string" ? lookupOptionByValue(item) : item
+            )
+          : typeof defaultValue === "object" && multiple
+          ? [defaultValue]
+          : typeof defaultValue === "string"
+          ? lookupOptionByValue(defaultValue)
           : defaultValue
       }
       name={name}

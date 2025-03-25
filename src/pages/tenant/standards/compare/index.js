@@ -10,9 +10,20 @@ import {
   Chip,
   Skeleton,
   Alert,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
 import { Layout as DashboardLayout } from "/src/layouts/index.js";
-import { PlayArrow, CheckCircle, Cancel, Info, Public, Microsoft } from "@mui/icons-material";
+import {
+  PlayArrow,
+  CheckCircle,
+  Cancel,
+  Info,
+  Public,
+  Microsoft,
+  Description,
+  Sync,
+} from "@mui/icons-material";
 import { ArrowLeftIcon } from "@mui/x-date-pickers";
 import CippFormComponent from "/src/components/CippComponents/CippFormComponent";
 import standards from "/src/data/standards.json";
@@ -25,6 +36,8 @@ import { ApiGetCall, ApiPostCall } from "../../../../api/ApiCall";
 import { useRouter } from "next/router";
 import { useDialog } from "../../../../hooks/use-dialog";
 import { Grid } from "@mui/system";
+import DOMPurify from "dompurify";
+import { ClockIcon } from "@heroicons/react/24/outline";
 
 const Page = () => {
   const router = useRouter();
@@ -80,41 +93,131 @@ const Page = () => {
 
       if (selectedTemplate && comparisonApi.isSuccess && comparisonApi.data) {
         const tenantData = comparisonApi.data;
-        
+
         // Find the current tenant's data by matching tenantFilter with currentTenant
-        const currentTenantObj = tenantData.find(t => t.tenantFilter === currentTenant);
+        const currentTenantObj = tenantData.find((t) => t.tenantFilter === currentTenant);
         const currentTenantData = currentTenantObj ? currentTenantObj.standardsResults || [] : [];
-        
+
         const allStandards = [];
         if (selectedTemplate.standards) {
           Object.entries(selectedTemplate.standards).forEach(([standardKey, standardConfig]) => {
-            const standardId = `standards.${standardKey}`;
-            const standardInfo = standards.find((s) => s.name === standardId);
-            const standardSettings = standardConfig.standards?.[standardKey] || {};
+            // Special handling for IntuneTemplate which is an array of items
+            if (standardKey === "IntuneTemplate" && Array.isArray(standardConfig)) {
+              // Process each IntuneTemplate item separately
+              standardConfig.forEach((templateItem, index) => {
+                const templateId = templateItem.TemplateList?.value;
+                if (templateId) {
+                  const standardId = `standards.IntuneTemplate.${templateId}`;
+                  const standardInfo = standards.find((s) => s.name === `standards.IntuneTemplate`);
 
-            // Find the tenant's value for this standard
-            const currentTenantStandard = currentTenantData.find(
-              (s) => s.standardId === standardId
-            );
+                  // Find the tenant's value for this specific template
+                  const currentTenantStandard = currentTenantData.find(
+                    (s) => s.standardId === standardId
+                  );
 
-            // Determine compliance status
-            const isCompliant =
-              currentTenantStandard &&
-              JSON.stringify(currentTenantStandard.value) === JSON.stringify(standardSettings);
+                  // Get the direct standard value from the tenant object
+                  const directStandardValue = currentTenantObj?.[standardId];
 
-            allStandards.push({
-              standardId,
-              standardName: standardInfo?.label || standardKey,
-              currentTenantValue: currentTenantStandard?.value,
-              standardValue: standardSettings,
-              complianceStatus: isCompliant ? "Compliant" : "Non-Compliant",
-              complianceDetails: standardInfo?.docsDescription || standardInfo?.helpText || "",
-              standardDescription: standardInfo?.helpText || "",
-              standardImpact: standardInfo?.impact || "Medium Impact",
-              standardImpactColour: standardInfo?.impactColour || "warning",
-              templateName: selectedTemplate.templateName || "Standard Template",
-              templateActions: standardConfig.action || [],
-            });
+                  // Determine compliance status
+                  let isCompliant = false;
+
+                  // For IntuneTemplate, the value is true if compliant, or an object with comparison data if not compliant
+                  if (directStandardValue === true) {
+                    isCompliant = true;
+                  } else if (
+                    directStandardValue !== undefined &&
+                    typeof directStandardValue !== "object"
+                  ) {
+                    isCompliant = true;
+                  } else if (currentTenantStandard) {
+                    isCompliant = currentTenantStandard.value === true;
+                  }
+
+                  // Create a standardValue object that contains the template settings
+                  const templateSettings = {
+                    templateId,
+                    Template: templateItem.TemplateList?.label || "Unknown Template",
+                    "Assign to": templateItem.AssignTo || "On",
+                    "Excluded Group": templateItem.excludeGroup || "",
+                    "Included Group": templateItem.customGroup || "",
+                  };
+
+                  allStandards.push({
+                    standardId,
+                    standardName: `IntuneTemplate: ${
+                      templateItem.TemplateList?.label || templateId
+                    }`,
+                    currentTenantValue:
+                      directStandardValue !== undefined
+                        ? directStandardValue
+                        : currentTenantStandard?.value,
+                    standardValue: templateSettings, // Use the template settings object instead of true
+                    complianceStatus: isCompliant ? "Compliant" : "Non-Compliant",
+                    complianceDetails:
+                      standardInfo?.docsDescription || standardInfo?.helpText || "",
+                    standardDescription: standardInfo?.helpText || "",
+                    standardImpact: standardInfo?.impact || "Medium Impact",
+                    standardImpactColour: standardInfo?.impactColour || "warning",
+                    templateName: selectedTemplate?.templateName || "Standard Template",
+                    templateActions: templateItem.action || [],
+                  });
+                }
+              });
+            } else {
+              // Regular handling for other standards
+              const standardId = `standards.${standardKey}`;
+              const standardInfo = standards.find((s) => s.name === standardId);
+              const standardSettings = standardConfig.standards?.[standardKey] || {};
+
+              // Find the tenant's value for this standard
+              const currentTenantStandard = currentTenantData.find(
+                (s) => s.standardId === standardId
+              );
+
+              // Determine compliance status
+              let isCompliant = false;
+
+              // Check if the standard is directly in the tenant object (like "standards.AuditLog": true)
+              const standardIdWithoutPrefix = standardId.replace("standards.", "");
+              const directStandardValue = currentTenantObj?.[standardId];
+
+              // Special case for boolean standards that are true in the tenant
+              if (directStandardValue === true) {
+                // If the standard is directly in the tenant and is true, it's compliant
+                isCompliant = true;
+              } else if (directStandardValue !== undefined) {
+                // For non-boolean values, use strict equality
+                isCompliant =
+                  JSON.stringify(directStandardValue) === JSON.stringify(standardSettings);
+              } else if (currentTenantStandard) {
+                // Fall back to the previous logic if the standard is not directly in the tenant object
+                if (typeof standardSettings === "boolean" && standardSettings === true) {
+                  isCompliant = currentTenantStandard.value === true;
+                } else {
+                  isCompliant =
+                    JSON.stringify(currentTenantStandard.value) ===
+                    JSON.stringify(standardSettings);
+                }
+              }
+
+              // Use the direct standard value from the tenant object if it exists
+              allStandards.push({
+                standardId,
+                standardName: standardId || standardKey,
+                currentTenantValue:
+                  directStandardValue !== undefined
+                    ? directStandardValue
+                    : currentTenantStandard?.value,
+                standardValue: standardSettings,
+                complianceStatus: isCompliant ? "Compliant" : "Non-Compliant",
+                complianceDetails: standardInfo?.docsDescription || standardInfo?.helpText || "",
+                standardDescription: standardInfo?.helpText || "",
+                standardImpact: standardInfo?.impact || "Medium Impact",
+                standardImpactColour: standardInfo?.impactColour || "warning",
+                templateName: selectedTemplate.templateName || "Standard Template",
+                templateActions: standardConfig.action || [],
+              });
+            }
           });
         }
 
@@ -151,24 +254,62 @@ const Page = () => {
             Back to Templates
           </Button>
         </Stack>
-        <Stack
-          direction="row"
-          justifyContent="flex-end"
-          alignItems="center"
-          spacing={4}
-          sx={{ mb: 3 }}
-        >
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<PlayArrow />}
-            onClick={runReportDialog.handleOpen}
-          >
-            Run Report Once
-          </Button>
-        </Stack>
-
-        {comparisonApi.isLoading && (
+        <Box>
+          <Stack direction="row" alignItems="space-between" spacing={2}>
+            <Typography variant="h4" width={"100%"}>
+              {
+                templateDetails?.data?.filter((template) => template.GUID === templateId)?.[0]
+                  ?.templateName
+              }
+            </Typography>
+            <Tooltip title="Refresh Data">
+              <IconButton onClick={() => comparisonApi.refetch()}>
+                <Sync />
+              </IconButton>
+            </Tooltip>
+          </Stack>
+          <Stack alignItems="center" flexWrap="wrap" direction="row" spacing={2}>
+            {comparisonApi.data?.find((comparison) => comparison.RowKey === currentTenant) && (
+              <Stack alignItems="center" direction="row" spacing={1}>
+                <SvgIcon color="text.secondary" fontSize="small">
+                  <ClockIcon />
+                </SvgIcon>
+                <Typography variant="subtitle2" color="text.secondary">
+                  Updated on{" "}
+                  {new Date(
+                    comparisonApi.data.find(
+                      (comparison) => comparison.RowKey === currentTenant
+                    ).LastRefresh
+                  ).toLocaleString()}
+                </Typography>
+              </Stack>
+            )}
+          </Stack>
+          {templateDetails?.data?.filter((template) => template.GUID === templateId)?.[0]
+            ?.description && (
+            <Box
+              sx={{
+                "& a": {
+                  color: (theme) => theme.palette.primary.main,
+                  textDecoration: "underline",
+                },
+                color: "text.secondary",
+                fontSize: "0.875rem",
+                "& p": {
+                  my: 0,
+                },
+                mt: 2,
+              }}
+              dangerouslySetInnerHTML={{
+                __html: DOMPurify.sanitize(
+                  templateDetails?.data?.filter((template) => template.GUID === templateId)[0]
+                    .description
+                ),
+              }}
+            />
+          )}
+        </Box>
+        {comparisonApi.isFetching && (
           <>
             {[1, 2, 3].map((item) => (
               <Grid container spacing={3} key={item} sx={{ mb: 4 }}>
@@ -240,10 +381,6 @@ const Page = () => {
             ))}
           </>
         )}
-
-        <Typography variant="h6" sx={{ mb: 3, px: 1 }}>
-          Comparison Results
-        </Typography>
 
         {comparisonApi.isError && (
           <Card sx={{ mb: 4, p: 3, borderRadius: 2, boxShadow: 2 }}>
@@ -375,7 +512,7 @@ const Page = () => {
                                     {key}:
                                   </Typography>
                                   <Typography variant="body2">
-                                    {typeof value === "object"
+                                    {typeof value === "object" && value !== null
                                       ? value.label || JSON.stringify(value)
                                       : value === true
                                       ? "Enabled"
@@ -387,11 +524,27 @@ const Page = () => {
                               ))
                             ) : (
                               <Typography variant="body2">
-                                {standard.standardValue !== undefined
-                                  ? typeof standard.standardValue === "object"
-                                    ? "No settings configured"
-                                    : String(standard.standardValue)
-                                  : "Not configured"}
+                                {standard.standardValue === true ? (
+                                  <Alert severity="success" sx={{ mt: 1 }}>
+                                    This setting is configured correctly
+                                  </Alert>
+                                ) : standard.standardValue === false ? (
+                                  <Alert severity="warning" sx={{ mt: 1 }}>
+                                    This setting is not configured correctly
+                                  </Alert>
+                                ) : standard.standardValue !== undefined ? (
+                                  typeof standard.standardValue === "object" ? (
+                                    "No settings configured"
+                                  ) : (
+                                    String(standard.standardValue)
+                                  )
+                                ) : (
+                                  <Alert severity="info" sx={{ mt: 1 }}>
+                                    This setting is not configured, or data has not been collected.
+                                    If you are getting this after data collection, the tenant might
+                                    not be licensed for this feature
+                                  </Alert>
+                                )}
                               </Typography>
                             )}
                           </Box>
@@ -511,11 +664,21 @@ const Page = () => {
                               <Typography
                                 variant="body2"
                                 sx={{
-                                  color: isDifferent ? "error.main" : "inherit",
-                                  fontWeight: isDifferent ? "medium" : "inherit",
+                                  color:
+                                    standard.complianceStatus === "Compliant"
+                                      ? "success.main"
+                                      : isDifferent
+                                      ? "error.main"
+                                      : "inherit",
+                                  fontWeight:
+                                    standard.complianceStatus !== "Compliant" && isDifferent
+                                      ? "medium"
+                                      : "inherit",
                                 }}
                               >
-                                {typeof value === "object"
+                                {standard.complianceStatus === "Compliant" && value === true
+                                  ? "Compliant"
+                                  : typeof value === "object" && value !== null
                                   ? value.label || JSON.stringify(value)
                                   : value === true
                                   ? "Enabled"
@@ -533,18 +696,31 @@ const Page = () => {
                         sx={{
                           whiteSpace: "pre-wrap",
                           color:
-                            standard.currentTenantValue !== standard.standardValue
-                              ? "error.main"
-                              : "inherit",
+                            standard.complianceStatus === "Compliant"
+                              ? "success.main"
+                              : "error.main",
                           fontWeight:
-                            standard.currentTenantValue !== standard.standardValue
-                              ? "medium"
-                              : "inherit",
+                            standard.complianceStatus !== "Compliant" ? "medium" : "inherit",
                         }}
                       >
-                        {standard.currentTenantValue !== undefined
-                          ? String(standard.currentTenantValue)
-                          : "Not configured"}
+                        {standard.complianceStatus === "Compliant" &&
+                        standard.currentTenantValue === true ? (
+                          <Alert severity="success" sx={{ mt: 1 }}>
+                            This setting is configured correctly
+                          </Alert>
+                        ) : standard.currentTenantValue === false ? (
+                          <Alert severity="warning" sx={{ mt: 1 }}>
+                            This setting is not configured correctly
+                          </Alert>
+                        ) : standard.currentTenantValue !== undefined ? (
+                          String(standard.currentTenantValue)
+                        ) : (
+                          <Alert severity="info" sx={{ mt: 1 }}>
+                            This setting is not configured, or data has not been collected. If you
+                            are getting this after data collection, the tenant might not be licensed
+                            for this feature
+                          </Alert>
+                        )}
                       </Typography>
                     )}
                   </Box>
