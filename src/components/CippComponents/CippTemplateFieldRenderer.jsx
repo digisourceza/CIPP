@@ -13,6 +13,7 @@ const CippTemplateFieldRenderer = ({
   // Default blacklisted fields with wildcard support
   const defaultBlacklistedFields = [
     "id",
+    "isAssigned",
     "createdDateTime",
     "modifiedDateTime",
     "@odata.*",
@@ -34,7 +35,7 @@ const CippTemplateFieldRenderer = ({
         "applicationFilter",
         "includeAuthenticationContextClassReferences",
       ],
-      priorityFields: ["displayName", "state"],
+      priorityFields: ["displayName", "state", "DisplayName", "Name", "displayname"],
       complexArrayFields: ["locationinfo", "groupinfo"],
       schemaFields: {
         operator: {
@@ -547,6 +548,19 @@ const CippTemplateFieldRenderer = ({
     }
 
     if (typeof value === "string") {
+      const alwaysTextFields = [
+        "displayname",
+        "displayName",
+        "name",
+        "description",
+        "identity",
+        "title",
+      ];
+
+      const isAlwaysTextField = alwaysTextFields.some(
+        (field) => key.toLowerCase() === field.toLowerCase()
+      );
+
       // Check if this looks like an enum value (common patterns in device policies)
       const enumPatterns = [
         "notConfigured",
@@ -566,7 +580,7 @@ const CippTemplateFieldRenderer = ({
         value.toLowerCase().includes(pattern.toLowerCase())
       );
 
-      if (looksLikeEnum) {
+      if (!isAlwaysTextField && looksLikeEnum) {
         // Create basic options based on common patterns
         const commonOptions = [
           { label: "Not Configured", value: "notConfigured" },
@@ -579,7 +593,6 @@ const CippTemplateFieldRenderer = ({
           { label: "Allowed", value: "allowed" },
           { label: "Required", value: "required" },
           { label: "None", value: "none" },
-          { label: "Lock Workstation", value: "lockWorkstation" },
         ].filter(
           (option) =>
             // Only include options that make sense for this field
