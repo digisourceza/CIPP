@@ -652,7 +652,7 @@ export const CIPPTableToptoolbar = ({
                       : "none",
                   "@keyframes spin": {
                     "0%": { transform: "rotate(0deg)" },
-                    "100%": { transform: "rotate(360deg)" },
+                    "100%": { transform: "rotate(-360deg)" },
                   },
                 }}
               >
@@ -1269,6 +1269,7 @@ export const CIPPTableToptoolbar = ({
           api={actionData.action}
           row={actionData.data}
           relatedQueryKeys={queryKeys}
+          {...actionData.action}
         />
       )}
 
