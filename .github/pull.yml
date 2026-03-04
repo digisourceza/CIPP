@@ -1,6 +1,6 @@
 version: "1"
 rules:
-  - base: main
+  - base: master
     upstream: KelvinTegelaar:main
     mergeMethod: merge
   - base: dev
